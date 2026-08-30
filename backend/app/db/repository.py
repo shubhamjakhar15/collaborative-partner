@@ -305,6 +305,7 @@ class FirestoreRepository:
         role: str,
         content: str,
         stage: Optional[str] = None,
+        attachments: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
         """Appends a message record to the project's messages subcollection."""
         msg_data = {
@@ -312,6 +313,7 @@ class FirestoreRepository:
             "role": role,
             "content": content,
             "stage": stage,
+            "attachments": attachments or [],
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -356,7 +358,87 @@ class FirestoreRepository:
         )
 
     # -------------------------------------------------------------------------
-    # 5. FEEDBACK LOGS (users/{u}/projects/{p}/feedback/{f})
+    # 5. PROJECT FILE ATTACHMENTS (users/{u}/projects/{p}/files/{f})
+    # -------------------------------------------------------------------------
+    def save_file(
+        self,
+        user_id: str,
+        project_id: str,
+        file_id: str,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Stores or updates a file attachment document in project memory."""
+        file_data = data.copy()
+        file_data["id"] = file_id
+        file_data["user_id"] = user_id
+        file_data["project_id"] = project_id
+        if "uploaded_at" not in file_data:
+            file_data["uploaded_at"] = datetime.now(timezone.utc).isoformat()
+
+        doc_ref = (
+            self.client.collection("users")
+            .document(user_id)
+            .collection("projects")
+            .document(project_id)
+            .collection("files")
+            .document(file_id)
+        )
+        doc_ref.set(file_data, merge=True)
+        return file_data
+
+    def get_files(
+        self,
+        user_id: str,
+        project_id: str,
+    ) -> list[dict[str, Any]]:
+        """Retrieves all persistent file attachments for a project."""
+        col_ref = (
+            self.client.collection("users")
+            .document(user_id)
+            .collection("projects")
+            .document(project_id)
+            .collection("files")
+        )
+        docs = col_ref.stream()
+        return [doc.to_dict() for doc in docs if doc.to_dict() is not None]
+
+    def get_file(
+        self,
+        user_id: str,
+        project_id: str,
+        file_id: str,
+    ) -> Optional[dict[str, Any]]:
+        """Retrieves a single file attachment by ID."""
+        doc_ref = (
+            self.client.collection("users")
+            .document(user_id)
+            .collection("projects")
+            .document(project_id)
+            .collection("files")
+            .document(file_id)
+        )
+        snap = doc_ref.get()
+        return snap.to_dict() if snap.exists else None
+
+    def delete_file(
+        self,
+        user_id: str,
+        project_id: str,
+        file_id: str,
+    ) -> None:
+        """Deletes a file attachment from project memory."""
+        (
+            self.client.collection("users")
+            .document(user_id)
+            .collection("projects")
+            .document(project_id)
+            .collection("files")
+            .document(file_id)
+            .delete()
+        )
+
+    # -------------------------------------------------------------------------
+    # 6. FEEDBACK LOGS (users/{u}/projects/{p}/feedback/{f})
     # -------------------------------------------------------------------------
     def save_feedback(
         self,

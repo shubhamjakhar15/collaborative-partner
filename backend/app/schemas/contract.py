@@ -98,6 +98,23 @@ class MemoryUpdate(BaseModel):
     )
 
 
+class FileAttachment(BaseModel):
+    """Uploaded file or image attachment."""
+    model_config = ConfigDict(extra="allow")
+
+    id: Optional[str] = Field(default=None, description="Unique file identifier")
+    filename: str = Field(..., description="Original file name")
+    content_type: str = Field(..., description="MIME type (e.g. image/png, application/json, text/plain)")
+    size: Optional[int] = Field(default=None, description="File size in bytes")
+    data_base64: Optional[str] = Field(default=None, description="Base64-encoded file data")
+    url: Optional[str] = Field(default=None, description="Public or static preview/download URL")
+    summary: Optional[str] = Field(default=None, description="Extracted text or brief content summary")
+    uploaded_at: Optional[datetime] = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Upload timestamp"
+    )
+
+
 class ChatRequest(BaseModel):
     """Incoming user request contract sent by the frontend."""
     model_config = ConfigDict(extra="forbid")
@@ -107,6 +124,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, description="Session identifier alias")
     message: str = Field(..., min_length=1, description="User's input text")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Client metadata")
+    attachments: list[FileAttachment] = Field(default_factory=list, description="Uploaded files/images for this turn")
 
     @model_validator(mode="after")
     def sync_request_ids(self) -> "ChatRequest":
@@ -138,6 +156,8 @@ class PartnerResponse(BaseModel):
     plan: Optional[Plan] = Field(default=None, description="Structured roadmap if active or updated")
     feedback_detected: bool = Field(default=False, description="True if user gave critique/feedback")
     memory_updates: list[MemoryUpdate] = Field(default_factory=list, description="Notes captured this turn")
+    attachments: list[FileAttachment] = Field(default_factory=list, description="Attachments sent or processed in this turn")
+    project_files: list[FileAttachment] = Field(default_factory=list, description="All persistent project files")
     next_action: str = Field(..., description="What the agent or user should do next")
     requires_user_input: bool = Field(default=True, description="Whether agent is awaiting user response")
     timestamp: datetime = Field(

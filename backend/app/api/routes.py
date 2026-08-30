@@ -56,9 +56,10 @@ async def get_project_endpoint(
     user_id: str,
     project_id: str,
     include_messages: bool = Query(default=True, description="Whether to include chat message history"),
+    include_files: bool = Query(default=True, description="Whether to include project files/images"),
 ) -> dict[str, Any]:
     """
-    Retrieves project roadmap, goals, constraints, decisions, and chat history.
+    Retrieves project roadmap, goals, constraints, decisions, files, and chat history.
     Allows the frontend to hydrate UI on page load, project switching, or refresh
     WITHOUT triggering an expensive LLM generation turn.
     """
@@ -79,6 +80,10 @@ async def get_project_endpoint(
         if include_messages:
             messages = repo.get_messages(user_id=user_id, project_id=project_id, limit=50)
             response_payload["messages"] = messages
+
+        if include_files:
+            files = repo.get_files(user_id=user_id, project_id=project_id)
+            response_payload["files"] = files
 
         return response_payload
     except HTTPException:
@@ -109,3 +114,75 @@ async def list_user_projects_endpoint(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list projects: {str(e)}")
+
+
+# -----------------------------------------------------------------------------
+# 5. PROJECT FILES & IMAGES (Persistent Multi-Modal Assets)
+# -----------------------------------------------------------------------------
+@router.get("/users/{user_id}/projects/{project_id}/files")
+async def list_project_files_endpoint(
+    user_id: str,
+    project_id: str,
+) -> dict[str, Any]:
+    """
+    Retrieves all persistent files and images uploaded to a project.
+    """
+    repo = FirestoreRepository()
+    try:
+        files = repo.get_files(user_id=user_id, project_id=project_id)
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "project_id": project_id,
+            "count": len(files),
+            "files": files,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list project files: {str(e)}")
+
+
+@router.post("/users/{user_id}/projects/{project_id}/files")
+async def upload_project_file_endpoint(
+    user_id: str,
+    project_id: str,
+    file_payload: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Persists an uploaded file/image metadata and data in project memory.
+    """
+    repo = FirestoreRepository()
+    try:
+        import uuid
+        file_id = file_payload.get("id") or f"file_{uuid.uuid4().hex[:12]}"
+        saved_file = repo.save_file(
+            user_id=user_id,
+            project_id=project_id,
+            file_id=file_id,
+            data=file_payload,
+        )
+        return {
+            "status": "success",
+            "file": saved_file,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+
+
+@router.delete("/users/{user_id}/projects/{project_id}/files/{file_id}")
+async def delete_project_file_endpoint(
+    user_id: str,
+    project_id: str,
+    file_id: str,
+) -> dict[str, Any]:
+    """
+    Deletes a file attachment from project memory.
+    """
+    repo = FirestoreRepository()
+    try:
+        repo.delete_file(user_id=user_id, project_id=project_id, file_id=file_id)
+        return {
+            "status": "success",
+            "message": f"File '{file_id}' deleted successfully.",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
