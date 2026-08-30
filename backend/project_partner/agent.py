@@ -28,6 +28,24 @@ def format_preferences_for_prompt(preferences: list[dict[str, Any]]) -> str:
     return "\n".join(formatted_lines)
 
 
+def format_files_for_prompt(files: list[dict[str, Any]]) -> str:
+    """Formats stored project file attachments into an informative context block."""
+    if not files:
+        return "No files or images uploaded yet for this project."
+
+    formatted = []
+    for f in files:
+        fname = f.get("filename", "unnamed")
+        ctype = f.get("content_type", "unknown")
+        uploaded = f.get("uploaded_at", "")
+        summary = f.get("summary")
+        entry = f"• [{ctype}] {fname} (Uploaded: {uploaded})"
+        if summary:
+            entry += f"\n  Summary: {summary[:300]}"
+        formatted.append(entry)
+    return "\n".join(formatted)
+
+
 def before_agent_lifecycle(callback_context: CallbackContext) -> None:
     """
     Lifecycle callback executed BEFORE agent generates a turn response:
@@ -36,6 +54,7 @@ def before_agent_lifecycle(callback_context: CallbackContext) -> None:
     3. If reusable preference feedback is detected, automatically persists it to Firestore
        and updates the active preferences context so the immediate turn obeys it.
     4. Tracks turn counter and manages lifecycle stage transitions.
+    5. Injects persistent knowledge of all project files and images from current and past turns.
     """
     state = callback_context.state
     session = getattr(callback_context, "session", None)
@@ -109,6 +128,13 @@ def before_agent_lifecycle(callback_context: CallbackContext) -> None:
     except Exception:
         state["user_preferences_context"] = "None recorded yet. Follow standard defaults."
 
+    # 5. Preload Project Files & Images into Prompt Context for Persistent Memory
+    try:
+        project_files = repo.get_files(user_id=user_id, project_id=project_id)
+        state["project_files_context"] = format_files_for_prompt(project_files)
+    except Exception:
+        state["project_files_context"] = "No files uploaded yet."
+
 
 def after_agent_lifecycle(callback_context: CallbackContext) -> None:
     """
@@ -141,6 +167,9 @@ You are "Project Partner" — an expert collaborative AI partner designed to lea
 ### AUTHORITATIVE USER PREFERENCES (MUST BE STRICTLY OBEYED ACROSS ALL PROJECTS):
 {user_preferences_context?}
 
+### UPLOADED PROJECT FILES & IMAGES (PERSISTENT KNOWLEDGE FROM CURRENT & PAST TURNS):
+{project_files_context?}
+
 ### CRITICAL RULES FOR ADAPTATION & BEHAVIOR:
 1. STRICT PREFERENCE ADHERENCE:
    - If `max_tasks_per_phase` is defined (e.g. 3), you MUST NEVER output more than that number of tasks in a single phase or plan!
@@ -160,6 +189,31 @@ Always maintain and update notes:
 • Decisions: [Key choices agreed upon]
 • Constraints: [Limits, deadlines, libraries]
 • Preferences: [Active user preferences applied]
+
+4. RESPONSE FORMATTING & COLLABORATIVE STRUCTURE:
+   - Always format responses using clean, structured Markdown.
+   - Put questions and section headings in **bold** (e.g., **What is authentication?**, **Why do we need it?**).
+   - For step-by-step collaborative guidance, generally follow this structure when appropriate:
+     **What are we doing?**
+     [Short explanation]
+     **Why are we doing this?**
+     [Short explanation]
+     **Example**
+     ```<language>
+     // Code snippet
+     ```
+     **Your task**
+     [Clear, actionable task for the user]
+   - Do not force all sections when they aren't relevant; adapt dynamically to the user's turn.
+   - Use normal paragraphs for explanations and bullet points (- or •) for lists.
+   - For multiline code, ALWAYS use fenced code blocks with the exact language specifier (e.g., ```javascript, ```python, ```json, ```bash, ```typescript, ```html).
+   - Use `inline code` for short code references, variable names, or inline commands.
+   - Do not return raw HTML. Keep formatting clean, scannable, and modern.
+
+5. PERSISTENT MULTI-MODAL CONTEXT & UPLOADED ASSETS:
+   - You have persistent memory of all files, diagrams, and images uploaded in this project (listed above).
+   - Whenever the user refers to previously uploaded files (e.g., "based on the mockup I uploaded earlier", "check the schema file", "refer to our image"), actively utilize that context and integrate it into your analysis, plan, and task steps.
+   - Acknowledge and discuss any newly attached images or files immediately and accurately.
 """.strip()
 
 root_agent = Agent(

@@ -1,5 +1,7 @@
+import base64
 import logging
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 from dotenv import load_dotenv
@@ -16,6 +18,7 @@ from app.schemas.contract import (
     QuestionItem,
     MemoryType,
     MemoryUpdate,
+    FileAttachment,
     ChatRequest,
     ChatResponse,
 )
@@ -45,10 +48,11 @@ class AgentService:
         """
         Executes a single chat turn with comprehensive error hardening:
         1. Ensures session is initialized in SessionService.
-        2. Dispatches user message to ADK Runner with fallback error recovery.
-        3. Collects generated tokens and inspects resulting session state.
-        4. Hydrates project memory & logs message to Firestore repository.
-        5. Returns strongly-typed ChatResponse.
+        2. Ingests and persists incoming file/image attachments.
+        3. Dispatches user message and multimodal parts to ADK Runner with fallback error recovery.
+        4. Collects generated tokens and inspects resulting session state.
+        5. Hydrates project memory, files & logs message to Firestore repository.
+        6. Returns strongly-typed ChatResponse.
         """
         user_id = req.user_id
         project_id = req.project_id or req.session_id or "default_project"
@@ -74,7 +78,52 @@ class AgentService:
             logger.error(f"Failed to initialize session for project '{project_id}': {e}")
             session = None
 
-        # 2. Log incoming user message to Firestore (Safe execution)
+        # 2. Process and persist any attached files/images
+        parts = []
+        saved_attachments = []
+        if req.attachments:
+            for att in req.attachments:
+                file_id = att.id or f"file_{uuid.uuid4().hex[:12]}"
+                file_record = {
+                    "id": file_id,
+                    "filename": att.filename,
+                    "content_type": att.content_type,
+                    "size": att.size,
+                    "data_base64": att.data_base64,
+                    "url": att.url,
+                    "summary": att.summary,
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                }
+                # Persist to project files repository
+                try:
+                    repo.save_file(user_id=user_id, project_id=project_id, file_id=file_id, data=file_record)
+                    saved_attachments.append(file_record)
+                except Exception as e:
+                    logger.warning(f"Failed to persist file '{att.filename}': {e}")
+
+                # Build multimodal GenAI parts
+                if att.data_base64:
+                    try:
+                        raw_bytes = base64.b64decode(att.data_base64)
+                        if att.content_type.startswith("image/"):
+                            parts.append(types.Part.from_bytes(data=raw_bytes, mime_type=att.content_type))
+                        else:
+                            try:
+                                text_content = raw_bytes.decode("utf-8", errors="replace")
+                                parts.append(types.Part.from_text(text=f"[Attached File: {att.filename} ({att.content_type})]\n{text_content}"))
+                            except Exception:
+                                parts.append(types.Part.from_bytes(data=raw_bytes, mime_type=att.content_type))
+                    except Exception as e:
+                        logger.warning(f"Failed to decode attachment '{att.filename}': {e}")
+                        if att.summary:
+                            parts.append(types.Part.from_text(text=f"[Attached File Summary: {att.filename}]\n{att.summary}"))
+                elif att.summary:
+                    parts.append(types.Part.from_text(text=f"[Attached File Summary: {att.filename}]\n{att.summary}"))
+
+        # Add the conversational text prompt
+        parts.append(types.Part.from_text(text=user_message))
+
+        # 3. Log incoming user message to Firestore with attachments
         try:
             repo.save_message(
                 user_id=user_id,
@@ -83,16 +132,17 @@ class AgentService:
                 role="user",
                 content=user_message,
                 stage=session.state.get("stage", Stage.DISCOVERY.value) if session else Stage.DISCOVERY.value,
+                attachments=saved_attachments,
             )
         except Exception as e:
             logger.warning(f"Failed to log user message to Firestore: {e}")
 
-        # 3. Dispatch to ADK Runner with Exception Resilience
+        # 4. Dispatch to ADK Runner with Multimodal Parts
         agent_text = ""
         try:
             content = types.Content(
                 role="user",
-                parts=[types.Part.from_text(text=user_message)],
+                parts=parts,
             )
 
             async for event in self.runner.run_async(
@@ -109,7 +159,7 @@ class AgentService:
             # Fallback gracefully with in-character response rather than an unhandled 500 crash
             agent_text = (
                 "I encountered a temporary connection issue communicating with the AI service. "
-                "I've preserved our notes and project context. Please retry your message."
+                "I've preserved our notes, files, and project context. Please retry your message."
             )
 
         # 4. Fetch updated session state safely
@@ -219,6 +269,25 @@ class AgentService:
         except Exception:
             pass
 
+        # 10. Hydrate All Project Files
+        project_files_data: list[FileAttachment] = []
+        try:
+            raw_files = repo.get_files(user_id=user_id, project_id=project_id)
+            for f in raw_files:
+                project_files_data.append(
+                    FileAttachment(
+                        id=f.get("id"),
+                        filename=f.get("filename", "unnamed_file"),
+                        content_type=f.get("content_type", "application/octet-stream"),
+                        size=f.get("size"),
+                        data_base64=f.get("data_base64"),
+                        url=f.get("url"),
+                        summary=f.get("summary"),
+                    )
+                )
+        except Exception as e:
+            logger.warning(f"Failed to fetch project files: {e}")
+
         return ChatResponse(
             project_id=project_id,
             message=agent_text or "I am ready to assist with your project.",
@@ -228,6 +297,8 @@ class AgentService:
             plan=project_plan,
             feedback_detected=feedback_detected,
             memory_updates=memory_updates,
+            attachments=req.attachments,
+            project_files=project_files_data,
             next_action=next_action,
             requires_user_input=True,
         )

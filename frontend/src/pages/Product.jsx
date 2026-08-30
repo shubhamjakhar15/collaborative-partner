@@ -10,6 +10,7 @@ export default function Product() {
   const [projectId, setProjectId] = useState("recipe-organizer-01");
   const [projects, setProjects] = useState([]);
   const [projectData, setProjectData] = useState(null);
+  const [projectFiles, setProjectFiles] = useState([]);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
@@ -21,7 +22,7 @@ export default function Product() {
     api.listUserProjects(userId).then(res => setProjects(res.projects || [])).catch(console.error);
   }, [userId]);
 
-  // Fetch project details and messages
+  // Fetch project details, messages, and files
   useEffect(() => {
     if (!projectId) return;
     setLoading(true);
@@ -29,6 +30,7 @@ export default function Product() {
       .then(res => {
         setProjectData(res.project);
         setMessages(res.messages || []);
+        setProjectFiles(res.files || []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -41,19 +43,26 @@ export default function Product() {
     }
   }, [isMemoryVaultOpen, userId]);
 
-  const handleSendMessage = async (text) => {
+  const handleSendMessage = async (text, attachments = []) => {
     // Optimistic UI update
-    const newMessage = { message_id: Date.now().toString(), role: "user", content: text, created_at: new Date().toISOString() };
+    const newMessage = { 
+      message_id: Date.now().toString(), 
+      role: "user", 
+      content: text, 
+      attachments: attachments,
+      created_at: new Date().toISOString() 
+    };
     setMessages(prev => [...prev, newMessage]);
     setIsTyping(true);
     
     try {
-      const response = await api.chat(userId, projectId, text);
+      const response = await api.chat(userId, projectId, text, {}, attachments);
       
       const agentMessage = { 
         message_id: Date.now().toString() + "-agent", 
         role: "agent", 
         content: response.message,
+        attachments: response.attachments || [],
         created_at: response.timestamp
       };
       
@@ -61,6 +70,15 @@ export default function Product() {
       
       if (response.plan) {
         setProjectData(prev => ({ ...prev, current_plan: response.plan }));
+      }
+
+      if (response.project_files && response.project_files.length > 0) {
+        setProjectFiles(response.project_files);
+      } else if (attachments.length > 0) {
+        // Refresh project files
+        api.getProjectFiles(userId, projectId).then(res => {
+          if (res.files) setProjectFiles(res.files);
+        }).catch(console.error);
       }
       
       if (response.feedback_detected) {
@@ -70,6 +88,15 @@ export default function Product() {
       console.error("Chat error:", error);
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const handleDeleteFile = async (fileId) => {
+    try {
+      await api.deleteFile(userId, projectId, fileId);
+      setProjectFiles(prev => prev.filter(f => f.id !== fileId));
+    } catch (error) {
+      console.error("Failed to delete file:", error);
     }
   };
 
@@ -91,7 +118,11 @@ export default function Product() {
         />
       </main>
       
-      <RightSidebar projectData={projectData} />
+      <RightSidebar 
+        projectData={projectData} 
+        projectFiles={projectFiles}
+        onDeleteFile={handleDeleteFile}
+      />
 
       <MemoryVault 
         isOpen={isMemoryVaultOpen} 
