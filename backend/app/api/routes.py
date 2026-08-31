@@ -23,6 +23,20 @@ async def chat_endpoint(
     return await service.process_chat(req)
 
 
+@router.post("/chat/stream")
+async def chat_stream_endpoint(
+    req: ChatRequest,
+    service: AgentService = Depends(get_agent_service),
+):
+    """
+    Streaming version of the Chat Endpoint.
+    Yields Server-Sent Events (SSE) containing text chunks as they are generated,
+    followed by a final metadata event with the updated plan, stage, and memory.
+    """
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(service.process_chat_stream(req), media_type="text/event-stream")
+
+
 # -----------------------------------------------------------------------------
 # 2. USER PREFERENCES ENDPOINT (Cross-Project Memory Vault)
 # -----------------------------------------------------------------------------

@@ -12,8 +12,6 @@ export function Navbar() {
 
   const links = [
     { name: 'Home', path: '/' },
-    { name: 'About', path: '/about' },
-    { name: 'Service', path: '/service' },
     { name: 'Product', path: '/product' },
   ];
 
@@ -21,12 +19,12 @@ export function Navbar() {
     <nav className="fixed top-0 w-full z-50 border-b border-black/10 bg-white/70 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 text-gray-900 font-bold text-xl tracking-tight">
-          <div className="bg-blue-600 p-1.5 rounded-lg">
+          <div className="bg-purple-500 p-1.5 rounded-lg shadow-sm">
             <Bot size={20} className="text-white" />
           </div>
           Project Partner
         </Link>
-        <div className="flex items-center gap-6">
+        {/* <div className="flex items-center gap-6">
           {links.map((link) => (
             <Link
               key={link.path}
@@ -41,11 +39,11 @@ export function Navbar() {
           ))}
           <Link
             to="/product"
-            className="ml-4 bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-700 transition-colors"
+            className="ml-4 bg-gray-900 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-all shadow-sm"
           >
             Start Free Trial
           </Link>
-        </div>
+        </div> */}
       </div>
     </nav>
   );

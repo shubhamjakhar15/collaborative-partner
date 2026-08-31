@@ -22,7 +22,7 @@ export function RightSidebar({ projectData, projectFiles = [], onDeleteFile }) {
           className={cn(
             "flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
             activeTab === 'roadmap'
-              ? "bg-white text-blue-600 shadow-xs border border-black/5"
+              ? "bg-white text-gray-900 shadow-xs border border-black/5"
               : "text-gray-500 hover:text-gray-900 hover:bg-gray-100/50"
           )}
         >
@@ -35,14 +35,14 @@ export function RightSidebar({ projectData, projectFiles = [], onDeleteFile }) {
           className={cn(
             "flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
             activeTab === 'files'
-              ? "bg-white text-blue-600 shadow-xs border border-black/5"
+              ? "bg-white text-gray-900 shadow-xs border border-black/5"
               : "text-gray-500 hover:text-gray-900 hover:bg-gray-100/50"
           )}
         >
           <FolderGit2 size={15} />
           <span>Files</span>
           {projectFiles?.length > 0 && (
-            <span className="ml-1 bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+            <span className="ml-1 bg-gray-900 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
               {projectFiles.length}
             </span>
           )}
@@ -54,7 +54,7 @@ export function RightSidebar({ projectData, projectFiles = [], onDeleteFile }) {
         {activeTab === 'roadmap' ? (
           !plan ? (
             <div className="text-center text-gray-500 text-sm mt-10">
-              <ListTodo size={32} className="mx-auto mb-3 opacity-30 text-blue-500" />
+              <ListTodo size={32} className="mx-auto mb-3 opacity-30 text-purple-500" />
               <p className="font-medium text-gray-700">No active plan yet.</p>
               <p className="text-xs mt-1 text-gray-500">Discuss your goals in chat to generate a roadmap.</p>
             </div>
@@ -69,13 +69,13 @@ export function RightSidebar({ projectData, projectFiles = [], onDeleteFile }) {
                 {plan.steps.map((step, idx) => (
                   <div 
                     key={step.id} 
-                    className="flex gap-3 p-3 rounded-xl bg-white border border-black/5 hover:border-blue-200 transition-colors shadow-2xs"
+                    className="flex gap-3 p-3 rounded-xl bg-white border border-black/5 hover:border-purple-200 transition-colors shadow-2xs"
                   >
                     <div className="mt-0.5">
                       {step.status === 'completed' ? (
                         <CheckCircle2 size={16} className="text-green-500" />
                       ) : step.status === 'in_progress' ? (
-                        <Circle size={16} className="text-blue-500 fill-blue-100" />
+                        <Circle size={16} className="text-purple-500 fill-blue-100" />
                       ) : step.status === 'blocked' ? (
                         <AlertCircle size={16} className="text-red-500" />
                       ) : (
@@ -115,7 +115,7 @@ export function RightSidebar({ projectData, projectFiles = [], onDeleteFile }) {
 
             {!projectFiles || projectFiles.length === 0 ? (
               <div className="text-center text-gray-500 text-sm mt-10">
-                <FolderGit2 size={32} className="mx-auto mb-3 opacity-30 text-blue-500" />
+                <FolderGit2 size={32} className="mx-auto mb-3 opacity-30 text-purple-500" />
                 <p className="font-medium text-gray-700">No project files yet.</p>
                 <p className="text-xs mt-1 text-gray-500 max-w-[200px] mx-auto">
                   Click the paperclip in chat to attach UI images, diagrams, or code.
@@ -130,7 +130,7 @@ export function RightSidebar({ projectData, projectFiles = [], onDeleteFile }) {
                   return (
                     <div 
                       key={file.id} 
-                      className="p-2.5 rounded-xl bg-white border border-black/5 hover:border-blue-200 transition-all shadow-2xs flex items-center gap-3 group"
+                      className="p-2.5 rounded-xl bg-white border border-black/5 hover:border-purple-200 transition-all shadow-2xs flex items-center gap-3 group"
                     >
                       <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden border border-black/5">
                         {isImage && imgSrc ? (
@@ -140,7 +140,7 @@ export function RightSidebar({ projectData, projectFiles = [], onDeleteFile }) {
                         ) : file.filename?.match(/\.(json|js|jsx|ts|tsx|py)$/i) ? (
                           <FileCode size={16} className="text-amber-500" />
                         ) : (
-                          <FileText size={16} className="text-blue-500" />
+                          <FileText size={16} className="text-purple-500" />
                         )}
                       </div>
 

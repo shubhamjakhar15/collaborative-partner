@@ -74,6 +74,19 @@ class AgentService:
                     session_id=project_id,
                     state={"stage": Stage.DISCOVERY.value, "turn_count": 0},
                 )
+                
+                # Auto-initialize the project in Firestore with the first message as title
+                title_snippet = (user_message[:40] + "...") if len(user_message) > 40 else user_message
+                try:
+                    proj_exists = repo.get_project(user_id, project_id)
+                    if not proj_exists or not proj_exists.get("title"):
+                        repo.set_project(
+                            user_id=user_id,
+                            project_id=project_id,
+                            data={"title": title_snippet}
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to auto-initialize project document: {e}")
         except Exception as e:
             logger.error(f"Failed to initialize session for project '{project_id}': {e}")
             session = None
@@ -303,9 +316,194 @@ class AgentService:
             requires_user_input=True,
         )
 
+    async def process_chat_stream(self, req: ChatRequest):
+        """
+        Executes a chat turn and yields Server-Sent Events (SSE) for streaming text chunks.
+        Yields a final event containing metadata (plan, memory, stage, etc.).
+        """
+        import json
+        user_id = req.user_id
+        project_id = req.project_id or req.session_id or "default_project"
+        user_message = req.message
+        turn_id = f"turn_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}"
+        repo = FirestoreRepository()
+
+        # 1. Retrieve or Initialize ADK Session
+        try:
+            session = await self.session_service.get_session(
+                app_name=self.app_name,
+                user_id=user_id,
+                session_id=project_id,
+            )
+            if not session:
+                session = await self.session_service.create_session(
+                    app_name=self.app_name,
+                    user_id=user_id,
+                    session_id=project_id,
+                    state={"stage": Stage.DISCOVERY.value, "turn_count": 0},
+                )
+                
+                # Auto-initialize the project in Firestore with the first message as title
+                title_snippet = (user_message[:40] + "...") if len(user_message) > 40 else user_message
+                try:
+                    proj_exists = repo.get_project(user_id, project_id)
+                    if not proj_exists or not proj_exists.get("title"):
+                        repo.set_project(
+                            user_id=user_id,
+                            project_id=project_id,
+                            data={"title": title_snippet}
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to auto-initialize project document: {e}")
+        except Exception as e:
+            logger.error(f"Failed to initialize session: {e}")
+            session = None
+
+        # 2. Process attachments
+        parts = []
+        saved_attachments = []
+        if req.attachments:
+            for att in req.attachments:
+                file_id = att.id or f"file_{uuid.uuid4().hex[:12]}"
+                file_record = {
+                    "id": file_id,
+                    "filename": att.filename,
+                    "content_type": att.content_type,
+                    "size": att.size,
+                    "data_base64": att.data_base64,
+                    "url": att.url,
+                    "summary": att.summary,
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                }
+                try:
+                    repo.save_file(user_id=user_id, project_id=project_id, file_id=file_id, data=file_record)
+                    saved_attachments.append(file_record)
+                except Exception:
+                    pass
+
+                if att.data_base64:
+                    try:
+                        raw_bytes = base64.b64decode(att.data_base64)
+                        if att.content_type.startswith("image/"):
+                            parts.append(types.Part.from_bytes(data=raw_bytes, mime_type=att.content_type))
+                        else:
+                            parts.append(types.Part.from_bytes(data=raw_bytes, mime_type=att.content_type))
+                    except Exception:
+                        pass
+                elif att.summary:
+                    parts.append(types.Part.from_text(text=f"[Attached File Summary: {att.filename}]\n{att.summary}"))
+
+        parts.append(types.Part.from_text(text=user_message))
+
+        # 3. Log user message
+        try:
+            repo.save_message(
+                user_id=user_id,
+                project_id=project_id,
+                message_id=f"msg_user_{turn_id}",
+                role="user",
+                content=user_message,
+                stage=session.state.get("stage", Stage.DISCOVERY.value) if session else Stage.DISCOVERY.value,
+                attachments=saved_attachments,
+            )
+        except Exception:
+            pass
+
+        # 4. Dispatch to ADK Runner and YIELD STREAM CHUNKS
+        agent_text = ""
+        import asyncio
+        try:
+            content = types.Content(role="user", parts=parts)
+            async for event in self.runner.run_async(
+                user_id=user_id,
+                session_id=project_id,
+                new_message=content,
+            ):
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if getattr(part, "text", None):
+                            text_chunk = part.text
+                            agent_text += text_chunk
+                            
+                            # Artificially stream the chunk so it appears word-by-word
+                            # This bypasses any internal ADK/Model buffering
+                            chunk_size = 8
+                            for i in range(0, len(text_chunk), chunk_size):
+                                tiny_chunk = text_chunk[i:i+chunk_size]
+                                yield f"data: {json.dumps({'type': 'chunk', 'text': tiny_chunk})}\n\n"
+                                await asyncio.sleep(0.02)
+                                
+        except Exception as e:
+            logger.error(f"Error during ADK Runner execution: {e}")
+            fallback_text = "I encountered a connection issue. Please retry."
+            agent_text += fallback_text
+            for i in range(0, len(fallback_text), 8):
+                yield f"data: {json.dumps({'type': 'chunk', 'text': fallback_text[i:i+8]})}\n\n"
+                await asyncio.sleep(0.02)
+
+        # 5. Fetch updated session state safely
+        state_dict = {}
+        try:
+            updated_session = await self.session_service.get_session(
+                app_name=self.app_name, user_id=user_id, session_id=project_id
+            )
+            if updated_session:
+                state_dict = updated_session.state
+        except Exception:
+            pass
+
+        current_stage_str = state_dict.get("stage", Stage.DISCOVERY.value)
+        try:
+            current_stage = Stage(current_stage_str)
+        except ValueError:
+            current_stage = Stage.DISCOVERY
+
+        feedback_detected = state_dict.get("feedback_detected", False)
+
+        # 6. Fetch project roadmap
+        project_plan = None
+        try:
+            proj_data = repo.get_project(user_id=user_id, project_id=project_id)
+            if proj_data and "current_plan" in proj_data:
+                project_plan = proj_data["current_plan"] # dictionary form is fine for json serialization
+        except Exception:
+            pass
+
+        # 7. Extract Note Updates
+        memory_updates = []
+        adaptation_event = state_dict.get("last_adaptation_event")
+        if adaptation_event:
+            memory_updates.append({
+                "id": f"mem_{turn_id}",
+                "type": "preference" if "user preference" in adaptation_event else "decision",
+                "content": adaptation_event,
+            })
+
+        # 8. Log assistant response
+        try:
+            repo.save_message(
+                user_id=user_id,
+                project_id=project_id,
+                message_id=f"msg_agent_{turn_id}",
+                role="agent",
+                content=agent_text,
+                stage=current_stage.value,
+            )
+        except Exception:
+            pass
+
+        # 9. Yield FINAL metadata event
+        final_metadata = {
+            "type": "metadata",
+            "message_id": f"msg_agent_{turn_id}",
+            "stage": current_stage.value,
+            "plan": project_plan,
+            "feedback_detected": feedback_detected,
+            "memory_updates": memory_updates,
+        }
+        yield f"data: {json.dumps(final_metadata)}\n\n"
 
 _agent_service: Optional[AgentService] = None
-
 
 def get_agent_service() -> AgentService:
     global _agent_service

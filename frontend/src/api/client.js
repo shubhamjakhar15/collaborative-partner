@@ -24,6 +24,68 @@ export const api = {
     return response.data;
   },
 
+  // 1.5 Core Chat Endpoint with Streaming
+  chatStream: async (userId, projectId, message, attachments = [], onChunk, onComplete, onError) => {
+    const payload = {
+      project_id: projectId,
+      message,
+      metadata: {},
+      attachments: attachments,
+    };
+    if (userId) payload.user_id = userId;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Split by SSE messages (separated by \n\n)
+        const messages = buffer.split('\n\n');
+        buffer = messages.pop(); // Keep the last incomplete part in the buffer
+        
+        for (const msg of messages) {
+          if (msg.trim() === '') continue;
+          
+          if (msg.startsWith('data: ')) {
+            const dataStr = msg.substring(6);
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.type === 'chunk') {
+                if (onChunk) onChunk(data.text);
+              } else if (data.type === 'metadata') {
+                if (onComplete) onComplete(data);
+              }
+            } catch (e) {
+              console.error("Error parsing stream data:", e, dataStr);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Stream error:", err);
+      if (onError) onError(err);
+    }
+  },
+
   // 2. User Preferences (Memory Vault)
   getUserPreferences: async (userId) => {
     const response = await apiClient.get(`/users/${userId}/preferences`);
