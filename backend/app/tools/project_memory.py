@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Optional
 from app.db.repository import FirestoreRepository, get_db_client
+from app.schemas.contract import Plan
 
 
 def get_project(
@@ -54,7 +55,7 @@ def update_project(
     constraints: Optional[list[str]] = None,
     deadline: Optional[str] = None,
     decisions: Optional[list[str]] = None,
-    current_plan: Optional[dict[str, Any]] = None,
+    current_plan: Optional[Plan] = None,
     completed_tasks: Optional[list[str]] = None,
     current_stage: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -102,7 +103,7 @@ def update_project(
         if decisions is not None:
             updates["decisions"] = decisions
         if current_plan is not None:
-            updates["current_plan"] = current_plan
+            updates["current_plan"] = current_plan.model_dump(mode="json")
         if completed_tasks is not None:
             updates["completed_tasks"] = completed_tasks
         if current_stage is not None:

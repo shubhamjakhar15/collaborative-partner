@@ -19,7 +19,7 @@ function CodeBlock({ language, value }) {
   };
 
   return (
-    <div className="my-3 rounded-lg overflow-hidden border border-gray-800 bg-[#1e1e1e] shadow-md">
+    <div className="my-3 rounded-lg overflow-hidden border border-gray-800 bg-[#1e1e1e] shadow-md w-full max-w-full">
       <div className="flex items-center justify-between px-4 py-1.5 bg-[#252526] border-b border-gray-800 text-xs text-gray-400 font-mono select-none">
         <span className="font-semibold tracking-wide text-gray-300">
           {language || 'code'}
@@ -72,7 +72,7 @@ export function AIMessage({ content }) {
   if (!content) return null;
 
   return (
-    <div className="ai-message-content text-gray-900 text-[15px] leading-relaxed break-words space-y-1">
+    <div className="ai-message-content text-gray-900 text-[15px] leading-relaxed break-words space-y-1 w-full overflow-hidden">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

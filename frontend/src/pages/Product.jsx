@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
+import { Menu, X } from 'lucide-react';
 import { api } from '../api/client';
 import { Sidebar } from '../components/workspace/Sidebar';
 import { ChatArea } from '../components/workspace/ChatArea';
-import { RightSidebar } from '../components/workspace/RightSidebar';
-import { MemoryVault } from '../components/workspace/MemoryVault';
+
 
 export default function Product() {
   const [userId] = useState("demo-user");
@@ -14,13 +14,25 @@ export default function Product() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
-  const [isMemoryVaultOpen, setIsMemoryVaultOpen] = useState(false);
-  const [preferences, setPreferences] = useState([]);
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Fetch projects list
   useEffect(() => {
     api.listUserProjects(userId).then(res => setProjects(res.projects || [])).catch(console.error);
   }, [userId]);
+
+  const handleNewProject = () => {
+    const newId = "proj_" + Date.now().toString();
+    setProjectId(newId);
+    
+    // Optimistically add it to the list
+    const newProject = {
+      project_id: newId,
+      title: "New Project"
+    };
+    setProjects(prev => [newProject, ...prev]);
+  };
 
   // Fetch project details, messages, and files
   useEffect(() => {
@@ -32,16 +44,16 @@ export default function Product() {
         setMessages(res.messages || []);
         setProjectFiles(res.files || []);
       })
-      .catch(console.error)
+      .catch(error => {
+        console.warn("Failed to load project, assuming new:", error);
+        setProjectData(null);
+        setMessages([]);
+        setProjectFiles([]);
+      })
       .finally(() => setLoading(false));
   }, [userId, projectId]);
 
-  // Fetch preferences
-  useEffect(() => {
-    if (isMemoryVaultOpen) {
-      api.getUserPreferences(userId).then(res => setPreferences(res.preferences || [])).catch(console.error);
-    }
-  }, [isMemoryVaultOpen, userId]);
+
 
   const handleSendMessage = async (text, attachments = []) => {
     // Optimistic UI update
@@ -52,43 +64,54 @@ export default function Product() {
       attachments: attachments,
       created_at: new Date().toISOString() 
     };
-    setMessages(prev => [...prev, newMessage]);
-    setIsTyping(true);
+    const agentMsgId = Date.now().toString() + "-agent";
     
-    try {
-      const response = await api.chat(userId, projectId, text, {}, attachments);
-      
-      const agentMessage = { 
-        message_id: Date.now().toString() + "-agent", 
-        role: "agent", 
-        content: response.message,
-        attachments: response.attachments || [],
-        created_at: response.timestamp
-      };
-      
-      setMessages(prev => [...prev, agentMessage]);
-      
-      if (response.plan) {
-        setProjectData(prev => ({ ...prev, current_plan: response.plan }));
-      }
+    // Add user message and an empty agent message placeholder
+    setMessages(prev => [...prev, newMessage, { message_id: agentMsgId, role: "agent", content: "", created_at: new Date().toISOString() }]);
+    setIsTyping(false); // Disable pulsing dots since text will stream immediately
+    
+    // Stream chunk handler
+    const onChunk = (chunk) => {
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.message_id === agentMsgId 
+            ? { ...msg, content: msg.content + chunk } 
+            : msg
+        )
+      );
+    };
 
-      if (response.project_files && response.project_files.length > 0) {
-        setProjectFiles(response.project_files);
-      } else if (attachments.length > 0) {
-        // Refresh project files
+    // Complete processing handler
+    const onComplete = (metadata) => {
+      if (metadata.plan) {
+        setProjectData(prev => ({ ...prev, current_plan: metadata.plan }));
+      }
+      if (metadata.feedback_detected) {
+        console.log("Feedback detected!", metadata.memory_updates);
+      }
+      if (attachments.length > 0) {
+        // Refresh project files if we uploaded something
         api.getProjectFiles(userId, projectId).then(res => {
           if (res.files) setProjectFiles(res.files);
         }).catch(console.error);
       }
       
-      if (response.feedback_detected) {
-        console.log("Feedback detected!", response.memory_updates);
-      }
-    } catch (error) {
-      console.error("Chat error:", error);
-    } finally {
-      setIsTyping(false);
-    }
+      // Refresh the projects list to get the updated project title from the backend
+      api.listUserProjects(userId).then(res => setProjects(res.projects || [])).catch(console.error);
+    };
+
+    const onError = (error) => {
+      console.error("Chat stream error:", error);
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.message_id === agentMsgId 
+            ? { ...msg, content: msg.content + "\n\n*(Error: Connection to AI failed. Please try again.)*" } 
+            : msg
+        )
+      );
+    };
+
+    await api.chatStream(userId, projectId, text, attachments, onChunk, onComplete, onError);
   };
 
   const handleDeleteFile = async (fileId) => {
@@ -101,15 +124,43 @@ export default function Product() {
   };
 
   return (
-    <div className="flex h-screen pt-16 overflow-hidden">
-      <Sidebar 
-        projects={projects} 
-        activeProjectId={projectId} 
-        onSelectProject={setProjectId}
-        onOpenMemoryVault={() => setIsMemoryVaultOpen(true)}
-      />
+    <div className="flex h-screen pt-16 overflow-hidden relative">
+      {/* Mobile Toggle Button */}
+      <button 
+        className="md:hidden absolute top-4 left-4 z-50 p-2 bg-white rounded-md shadow-md border border-gray-200"
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+      >
+        {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
+      {/* Sidebar Overlay for Mobile */}
+      {isSidebarOpen && (
+        <div 
+          className="md:hidden fixed inset-0 bg-black/20 z-40 top-16"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar Container */}
+      <div className={`
+        absolute md:relative z-40 bg-[#f9f9f9] h-full transition-transform duration-300 flex-shrink-0
+        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+      `}>
+        <Sidebar 
+          projects={projects} 
+          activeProjectId={projectId} 
+          onSelectProject={(id) => {
+            setProjectId(id);
+            setIsSidebarOpen(false);
+          }}
+          onNewProject={() => {
+            handleNewProject();
+            setIsSidebarOpen(false);
+          }}
+        />
+      </div>
       
-      <main className="flex-1 flex border-x border-black/5 relative shadow-sm">
+      <main className="flex-1 flex border-x border-black/5 relative shadow-sm min-w-0">
         <ChatArea 
           messages={messages} 
           onSendMessage={handleSendMessage} 
@@ -118,17 +169,9 @@ export default function Product() {
         />
       </main>
       
-      <RightSidebar 
-        projectData={projectData} 
-        projectFiles={projectFiles}
-        onDeleteFile={handleDeleteFile}
-      />
 
-      <MemoryVault 
-        isOpen={isMemoryVaultOpen} 
-        onClose={() => setIsMemoryVaultOpen(false)}
-        preferences={preferences}
-      />
+
+
     </div>
   );
 }

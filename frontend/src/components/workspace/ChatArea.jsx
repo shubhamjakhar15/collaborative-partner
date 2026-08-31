@@ -70,9 +70,9 @@ export function ChatArea({ messages, onSendMessage, loading, isTyping }) {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-transparent relative h-[calc(100vh-4rem)]">
+    <div className="flex-1 flex flex-col bg-transparent relative h-[calc(100vh-4rem)] w-full min-w-0">
       {/* Chat Messages List */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 space-y-6">
         {loading ? (
           <div className="flex items-center justify-center h-full text-gray-500">
             <div className="animate-pulse flex items-center gap-2">
@@ -81,29 +81,39 @@ export function ChatArea({ messages, onSendMessage, loading, isTyping }) {
             </div>
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-xs">
-              <Bot size={32} />
+          <div className="flex flex-col items-center justify-center h-full text-center space-y-8 animate-fade-in pb-20">
+            {/* Glassmorphic Glowing Orb for Empty State */}
+            <div className="relative w-48 h-48 mx-auto flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-purple-300 opacity-30 blur-[40px] mix-blend-multiply animate-pulse"></div>
+              <div className="relative w-36 h-36 rounded-full bg-white/40 backdrop-blur-2xl shadow-[inset_0_-10px_20px_rgba(168,85,247,0.2),_inset_0_10px_20px_rgba(255,255,255,0.9),_0_20px_40px_-10px_rgba(168,85,247,0.2)] border border-white/60 flex items-center justify-center overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-100 via-purple-300 to-purple-400 opacity-60"></div>
+                <div className="absolute top-3 left-4 w-12 h-12 bg-white rounded-full blur-[10px] opacity-80"></div>
+              </div>
             </div>
-            <div>
-              <p className="font-semibold text-gray-800 text-lg">Start a conversation or upload project files</p>
-              <p className="text-sm text-gray-500 mt-1 max-w-sm">
-                Attach images, wireframes, or code. Project Partner will analyze them and remember them across future turns.
-              </p>
-            </div>
+            
+            <h2 className="text-3xl md:text-4xl font-medium tracking-tight text-gray-900 leading-tight">
+              <span className="bg-gradient-to-r from-purple-400 to-purple-500 bg-clip-text text-transparent block mb-1">
+                Hello, Developer
+              </span>
+              How can I assist you today?
+            </h2>
           </div>
         ) : (
           messages.map(msg => (
-            <div key={msg.message_id || msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div 
+              key={msg.message_id || msg.id} 
+              id={msg.message_id || msg.id}
+              className={`flex w-full gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
               {msg.role === 'agent' && (
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 border border-blue-200 mt-1">
+                <div className="hidden md:flex w-8 h-8 rounded-full bg-blue-100 items-center justify-center flex-shrink-0 border border-blue-200 mt-1">
                   <Bot size={16} className="text-blue-600" />
                 </div>
               )}
               
-              <div className={`max-w-[85%] rounded-2xl px-5 py-3.5 shadow-xs ${
+              <div className={`max-w-full md:max-w-[85%] min-w-0 rounded-2xl px-5 py-3.5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] ${
                 msg.role === 'user' 
-                  ? 'bg-blue-600 text-white rounded-br-none' 
+                  ? 'bg-purple-600 text-white rounded-br-none border border-purple-700/50' 
                   : 'bg-white text-gray-900 border border-black/5 rounded-bl-none overflow-hidden'
               }`}>
                 {/* User or Agent Attachments Gallery */}
@@ -141,7 +151,7 @@ export function ChatArea({ messages, onSendMessage, loading, isTyping }) {
                             key={att.id || att.filename}
                             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border ${
                               msg.role === 'user' 
-                                ? 'bg-blue-700/80 border-blue-500 text-white' 
+                                ? 'bg-purple-700/80 border-purple-500 text-white' 
                                 : 'bg-gray-50 border-gray-200 text-gray-800'
                             }`}
                           >
@@ -169,7 +179,7 @@ export function ChatArea({ messages, onSendMessage, loading, isTyping }) {
               </div>
 
               {msg.role === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 border border-black/5 mt-1">
+                <div className="hidden md:flex w-8 h-8 rounded-full bg-gray-200 items-center justify-center flex-shrink-0 border border-black/5 mt-1">
                   <User size={16} className="text-gray-600" />
                 </div>
               )}
@@ -178,11 +188,11 @@ export function ChatArea({ messages, onSendMessage, loading, isTyping }) {
         )}
 
         {isTyping && (
-          <div className="flex gap-4 justify-start">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 border border-blue-200">
+          <div className="flex w-full gap-4 justify-start">
+            <div className="hidden md:flex w-8 h-8 rounded-full bg-blue-100 items-center justify-center flex-shrink-0 border border-blue-200">
               <Bot size={16} className="text-blue-600" />
             </div>
-            <div className="max-w-[80%] rounded-2xl px-5 py-4 shadow-sm bg-white border border-black/5 rounded-bl-none flex items-center gap-1">
+            <div className="w-full max-w-full md:max-w-[80%] rounded-2xl px-5 py-4 shadow-sm bg-white border border-black/5 rounded-bl-none flex items-center gap-1">
               <div className="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
               <div className="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
               <div className="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
@@ -228,40 +238,46 @@ export function ChatArea({ messages, onSendMessage, loading, isTyping }) {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="relative flex items-center">
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleFileChange} 
-              multiple 
-              accept="image/*,.pdf,.txt,.json,.md,.js,.jsx,.ts,.tsx,.py,.csv" 
-              className="hidden" 
-            />
-            <button 
-              type="button" 
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute left-3 text-gray-400 hover:text-blue-600 transition-colors cursor-pointer p-1 rounded-full hover:bg-gray-100" 
-              title="Attach images or files"
-            >
-              <Paperclip size={20} />
-            </button>
+          <form onSubmit={handleSubmit} className="relative flex flex-col bg-white border border-gray-200 shadow-[0_4px_20px_rgb(0,0,0,0.05)] rounded-2xl p-2.5 transition-all focus-within:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+            <div className="flex items-center px-2 py-1">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={isTyping}
+                placeholder={isTyping ? "AI is analyzing project context..." : "Ask me anything..."}
+                className="flex-1 bg-transparent border-none outline-none text-gray-700 placeholder-gray-400 text-[15px] focus:ring-0"
+              />
+            </div>
             
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={isTyping}
-              placeholder={isTyping ? "AI is analyzing project context..." : "Ask a question, upload a mockup/schema, or give feedback..."}
-              className="w-full bg-white border border-black/10 rounded-full pl-12 pr-12 py-4 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm text-sm md:text-base"
-            />
-            
-            <button 
-              type="submit" 
-              disabled={(!input.trim() && stagedFiles.length === 0) || isTyping}
-              className="absolute right-2 p-2 bg-blue-600 rounded-full text-white hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors cursor-pointer"
-            >
-              <Send size={18} />
-            </button>
+            <div className="flex items-center justify-between mt-2 pt-1 border-t border-transparent">
+              <div className="flex gap-1.5 items-center">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileChange} 
+                  multiple 
+                  accept="image/*,.pdf,.txt,.json,.md,.js,.jsx,.ts,.tsx,.py,.csv" 
+                  className="hidden" 
+                />
+                <button 
+                  type="button" 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer" 
+                  title="Attach images or files"
+                >
+                  <Paperclip size={16} />
+                </button>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={(!input.trim() && stagedFiles.length === 0) || isTyping}
+                className="p-2 bg-gray-900 rounded-full text-white hover:bg-black disabled:opacity-40 disabled:hover:bg-gray-900 transition-colors cursor-pointer flex items-center justify-center shadow-sm"
+              >
+                <Send size={14} />
+              </button>
+            </div>
           </form>
         </div>
       </div>
